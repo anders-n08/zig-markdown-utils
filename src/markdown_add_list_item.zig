@@ -109,8 +109,10 @@ pub fn main() !void {
                 }
             },
             .find_first_list_item => {
-                if (token.id == .li) {
-                    state = .find_last_list_item;
+                switch (token.id) {
+                    .li => state = .find_last_list_item,
+                    .h1, .h2, .h3, .h4, .h5 => state = .wait_for_eof, // No list item beneath this header
+                    else => {},
                 }
             },
             .find_last_list_item => {
