@@ -13,5 +13,4 @@ jobs:
         uses: korandoru/setup-zig@v1
         with:
           zig-version: ${{ matrix.zig }}
-      - run: ${PWD}/deps.sh
       - run: zig build test
