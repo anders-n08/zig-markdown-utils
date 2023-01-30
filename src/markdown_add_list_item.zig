@@ -75,10 +75,13 @@ pub fn main() !void {
         return stderr.writeAll("fatal: no header specified\n\n");
     }
 
-    var source: []u8 = undefined;
+    var pt = PieceTable.init(allocator);
+    defer pt.deinit();
+
     const file = blk: {
         if (std.fs.cwd().openFile(file_path.?, .{ .mode = .read_write })) |f| {
-            source = try f.readToEndAlloc(allocator, std.math.maxInt(u32));
+            const source = try f.readToEndAlloc(allocator, std.math.maxInt(u32));
+            try pt.setup(source);
             break :blk f;
         } else |err| switch (err) {
             else => {
@@ -86,14 +89,14 @@ pub fn main() !void {
                     const template = std.fs.cwd().openFile(p, .{ .mode = .read_only }) catch {
                         return stderr.writeAll("fatal: file and template not found\n\n");
                     };
-                    const template_source = try template.readToEndAlloc(allocator, std.math.maxInt(u32));
-                    defer allocator.free(template_source);
+                    const source = try template.readToEndAlloc(allocator, std.math.maxInt(u32));
+                    try pt.setup(source);
+
                     const new_file = std.fs.cwd().createFile(file_path.?, .{
                         .read = true,
                     }) catch {
                         return stderr.writeAll("fatal: failed to create file\n\n");
                     };
-                    source = try allocator.dupe(u8, template_source);
                     break :blk new_file;
                 } else {
                     return stderr.writeAll("fatal: file not found\n\n");
@@ -102,11 +105,6 @@ pub fn main() !void {
         }
     };
     defer file.close();
-
-    var pt = PieceTable.init(allocator);
-    defer pt.deinit();
-
-    try pt.setup(source);
 
     var tokenizer = Tokenizer{
         .pt = &pt,
