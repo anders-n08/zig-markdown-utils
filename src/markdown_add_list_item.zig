@@ -12,9 +12,11 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const usage =
     \\Usage: markdown_add_time_entry <path-to-md>
     \\
-    \\--header             Header to hold list
-    \\-t, --text [text]    Time entry text to be inserted at end of list
-    \\-h, --help           Print help and exit
+    \\--header                 Header to hold list
+    \\--text [text]            Time entry text to be inserted at end of list
+    \\--template [filename]    If <path-to-md> does not exists, create it using
+    \\                         this template.
+    \\-h, --help               Print help and exit
     \\
 ;
 
@@ -30,6 +32,7 @@ pub fn main() !void {
     const stderr = io.getStdErr().writer();
 
     var file_path: ?[]const u8 = null;
+    var template_path: ?[]const u8 = null;
     var insert_text: ?[]const u8 = null;
     var header: ?[]const u8 = null;
     var arg_index: usize = 0;
@@ -43,12 +46,18 @@ pub fn main() !void {
             }
             arg_index += 1;
             header = args[arg_index];
-        } else if (mem.eql(u8, "-t", args[arg_index]) or mem.eql(u8, "--text", args[arg_index])) {
+        } else if (mem.eql(u8, "--text", args[arg_index])) {
             if (arg_index + 1 >= args.len) {
                 return stderr.writeAll("fatal: expected [text] after --text\n\n");
             }
             arg_index += 1;
             insert_text = args[arg_index];
+        } else if (mem.eql(u8, "--template", args[arg_index])) {
+            if (arg_index + 1 >= args.len) {
+                return stderr.writeAll("fatal: expected [file] after --template\n\n");
+            }
+            arg_index += 1;
+            template_path = args[arg_index];
         } else {
             file_path = args[arg_index];
         }
@@ -63,14 +72,36 @@ pub fn main() !void {
     }
 
     if (header == null) {
-        return stderr.writeAll("fatal: no no header specified\n\n");
+        return stderr.writeAll("fatal: no header specified\n\n");
     }
 
-    const file = try std.fs.cwd().openFile(file_path.?, .{
-        .mode = .read_write,
-    });
+    var source: []u8 = undefined;
+    const file = blk: {
+        if (std.fs.cwd().openFile(file_path.?, .{ .mode = .read_write })) |f| {
+            source = try f.readToEndAlloc(allocator, std.math.maxInt(u32));
+            break :blk f;
+        } else |err| switch (err) {
+            else => {
+                if (template_path) |p| {
+                    const template = std.fs.cwd().openFile(p, .{ .mode = .read_only }) catch {
+                        return stderr.writeAll("fatal: file and template not found\n\n");
+                    };
+                    const template_source = try template.readToEndAlloc(allocator, std.math.maxInt(u32));
+                    defer allocator.free(template_source);
+                    const new_file = std.fs.cwd().createFile(file_path.?, .{
+                        .read = true,
+                    }) catch {
+                        return stderr.writeAll("fatal: failed to create file\n\n");
+                    };
+                    source = try allocator.dupe(u8, template_source);
+                    break :blk new_file;
+                } else {
+                    return stderr.writeAll("fatal: file not found\n\n");
+                }
+            },
+        }
+    };
     defer file.close();
-    const source = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
 
     var pt = PieceTable.init(allocator);
     defer pt.deinit();
