@@ -140,7 +140,14 @@ pub fn main() !void {
             .find_first_list_item => {
                 switch (token.id) {
                     .li => state = .find_last_list_item,
-                    .h1, .h2, .h3, .h4, .h5 => state = .wait_for_eof, // No list item beneath this header
+                    .h1, .h2, .h3, .h4, .h5, .eof => {
+                        if (prev_token) |t| {
+                            var next_loc = try pt.insertTextAt("- ", t.end);
+                            next_loc = try pt.insertTextAt(insert_text.?, next_loc);
+                            next_loc = try pt.insertTextAt("\n", next_loc);
+                        }
+                        state = .wait_for_eof;
+                    },
                     else => {},
                 }
             },
